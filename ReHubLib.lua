@@ -371,15 +371,27 @@ function Library:Start(config: any)
 		Parent = LocalPlayer:WaitForChild("PlayerGui"),
 	})
 
-	-- Main Frame
+	-- Main Frame — responsive scale-based default; clamped by UISizeConstraint.
+	-- Priority: saved size > explicit config > viewport-proportional default.
+	local savedW = tonumber(self._flags.__WinW)
+	local savedH = tonumber(self._flags.__WinH)
+	local cfgW = config.Width
+	local cfgH = config.Height
 	self._mainFrame = Create("Frame", {
 		Name = "MainFrame",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(0, 560, 0, 360),
+		Size = (savedW and savedH) and UDim2.fromOffset(savedW, savedH)
+			or (cfgW and cfgH) and UDim2.fromOffset(cfgW, cfgH)
+			or UDim2.fromScale(0.40, 0.58),
 		BackgroundColor3 = Theme.Background,
 		BorderSizePixel = 0,
 		Parent = self._gui,
+	})
+	Create("UISizeConstraint", {
+		MinSize = Vector2.new(520, 360),
+		MaxSize = Vector2.new(1600, 1000),
+		Parent = self._mainFrame,
 	})
 	Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = self._mainFrame })
 	reg(self._mainFrame, "BackgroundColor3", "Background")
@@ -533,6 +545,56 @@ function Library:Start(config: any)
 	})
 
 	MakeDraggable(self._topBar, self._mainFrame)
+
+	-- Resize grip (bottom-right corner drag; UISizeConstraint clamps)
+	local grip = Create("TextButton", {
+		Name = "ResizeGrip",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -2, 1, -2),
+		Size = UDim2.new(0, 16, 0, 16),
+		BackgroundTransparency = 1,
+		Text = "",
+		ZIndex = 10,
+		Parent = self._mainFrame,
+	})
+	do
+		local resizing = false
+		local startSize, startPos
+		grip.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				resizing = true
+				startSize = self._mainFrame.AbsoluteSize
+				startPos = Vector2.new(input.Position.X, input.Position.Y)
+			end
+		end)
+		UserInputService.InputEnded:Connect(function(input)
+			if resizing and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+				resizing = false
+				self._flags.__WinW = math.floor(self._mainFrame.AbsoluteSize.X)
+				self._flags.__WinH = math.floor(self._mainFrame.AbsoluteSize.Y)
+				if self._saveFolder then
+					pcall(function()
+						writefile(self._saveFolder .. ".json", HttpService:JSONEncode(self._flags))
+					end)
+				end
+			end
+		end)
+		UserInputService.InputChanged:Connect(function(input)
+			if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				local cam = workspace.CurrentCamera
+				local vp = cam and cam.ViewportSize or Vector2.new(1600, 900)
+				local w = math.clamp(
+					startSize.X + (input.Position.X - startPos.X),
+					520, math.min(1600, math.floor(vp.X * 0.95))
+				)
+				local h = math.clamp(
+					startSize.Y + (input.Position.Y - startPos.Y),
+					360, math.min(1000, math.floor(vp.Y * 0.95))
+				)
+				self._mainFrame.Size = UDim2.fromOffset(math.floor(w), math.floor(h))
+			end
+		end)
+	end
 
 	-- Re-show on double-click topbar (when minimized)
 	local lastClick = 0
@@ -842,18 +904,24 @@ function Library:MakeTab(name: string)
 			Parent = itemsFrame,
 		})
 
-		-- Auto-resize section
+		-- Auto-resize section (exposed for dropdowns, which change height when opened)
 		local ITEM_GAP = 6
 		local function updateSize()
 			local offsetY = headerH + 8
+			local count = 0
 			for _, child in ipairs(itemsFrame:GetChildren()) do
 				if child:IsA("GuiObject") then
 					offsetY += child.Size.Y.Offset + ITEM_GAP
+					count += 1
 				end
 			end
-			offsetY += 10 -- bottom padding (UIPadding is additive, this trims trailing gap)
+			if count > 0 then
+				offsetY -= ITEM_GAP
+			end
+			offsetY += 10
 			frame.Size = UDim2.new(1, 0, 0, offsetY)
 		end
+		section.updateSize = updateSize
 
 		itemsFrame.ChildAdded:Connect(updateSize)
 		itemsFrame.ChildRemoved:Connect(updateSize)
@@ -1280,18 +1348,26 @@ function Library:MakeTab(name: string)
 			})
 			reg(arrow, "TextColor3", "Subtext")
 
-			-- Options container
-			local optionsFrame = Create("Frame", {
+			-- Options scroll container (capped height; long lists scroll inside)
+			local MAX_OPTIONS_H = 160
+			local optScroll = Create("ScrollingFrame", {
 				Name = "Options",
-				Position = UDim2.new(0, 0, 0, HEADER_H + 4),
-				Size = UDim2.new(1, 0, 0, 0),
+				Position = UDim2.new(0, 4, 0, HEADER_H + 2),
+				Size = UDim2.new(1, -8, 0, 0),
 				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ScrollBarThickness = 3,
+				ScrollBarImageColor3 = Theme.Scrollbar,
+				ScrollBarImageTransparency = 0.2,
+				CanvasSize = UDim2.new(0, 0, 0, 0),
+				AutomaticCanvasSize = Enum.AutomaticSize.Y,
 				Parent = dropFrame,
 			})
+			reg(optScroll, "ScrollBarImageColor3", "Scrollbar", 0.2)
 			Create("UIListLayout", {
 				SortOrder = Enum.SortOrder.LayoutOrder,
 				Padding = UDim.new(0, 2),
-				Parent = optionsFrame,
+				Parent = optScroll,
 			})
 
 			local optionState: {[string]: any} = {}
@@ -1312,6 +1388,25 @@ function Library:MakeTab(name: string)
 				st.label.TextColor3 = st.selected and Theme.Text or Theme.Subtext
 			end
 
+			-- Open/close: layout-aware so the section (and page canvas) grows with it.
+			-- Raising the SECTION's ZIndex paints the open list above later sections.
+			local function setOpen(open: boolean)
+				dropped = open
+				local listH = math.min(#options * 28 + 6, MAX_OPTIONS_H)
+				local targetH = open and (HEADER_H + 2 + listH + 4) or HEADER_H
+				frame.ZIndex = open and 100 or 1
+				optScroll.Size = UDim2.new(1, -8, 0, listH)
+				TweenService:Create(dropFrame, Motion.Slow, { Size = UDim2.new(1, 0, 0, targetH) }):Play()
+				TweenService:Create(arrow, Motion.Slow, { Rotation = open and 180 or 0 }):Play()
+				if section.updateSize then
+					section.updateSize()
+					-- exact height once the size tween lands
+					task.delay(Motion.Slow.Time + 0.02, function()
+						if dropped == open then section.updateSize() end
+					end)
+				end
+			end
+
 			local function toggleOption(opt: string)
 				if multi then
 					local st = optionState[opt]
@@ -1326,9 +1421,7 @@ function Library:MakeTab(name: string)
 				else
 					local prev = selected
 					selected = opt
-					dropped = false
-					TweenService:Create(dropFrame, Motion.Slow, { Size = UDim2.new(1, 0, 0, HEADER_H) }):Play()
-					TweenService:Create(arrow, Motion.Slow, { Rotation = 0 }):Play()
+					setOpen(false)
 					if prev and optionState[prev] then
 						optionState[prev].selected = false
 						refreshOptionVisual(prev)
@@ -1350,7 +1443,7 @@ function Library:MakeTab(name: string)
 					Text = "",
 					AutoButtonColor = false,
 					LayoutOrder = index,
-					Parent = optionsFrame,
+					Parent = optScroll,
 				})
 				Create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = optBtn })
 
@@ -1398,16 +1491,9 @@ function Library:MakeTab(name: string)
 				buildOption(opt, i)
 			end
 
-			-- Open/close (header only)
-			local function toggleDrop()
-				dropped = not dropped
-				local optCount = #options
-				local targetH = dropped and (HEADER_H + 4 + optCount * 28 + 4) or HEADER_H
-				TweenService:Create(dropFrame, Motion.Slow, { Size = UDim2.new(1, 0, 0, targetH) }):Play()
-				TweenService:Create(arrow, Motion.Slow, { Rotation = dropped and 180 or 0 }):Play()
-			end
-
-			headerBtn.Activated:Connect(toggleDrop)
+			headerBtn.Activated:Connect(function()
+				setOpen(not dropped)
+			end)
 
 			updateDisplay()
 
@@ -1452,11 +1538,12 @@ function Library:MakeTab(name: string)
 			function dropFunc:Clear()
 				options = {}
 				optionState = {}
-				for _, child in ipairs(optionsFrame:GetChildren()) do
+				for _, child in ipairs(optScroll:GetChildren()) do
 					if child:IsA("TextButton") then child:Destroy() end
 				end
 				selected = multi and {} or nil
 				updateDisplay()
+				if dropped then setOpen(false) end
 			end
 
 			function dropFunc:Refresh(newOpts: { string }, newDefault: any)
