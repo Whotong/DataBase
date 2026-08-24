@@ -344,7 +344,7 @@ function Library:Start(config: any)
 	self._tabButtons = {}
 	self._currentPage = nil
 	self._saveFolder = saveFolder
-	self._flags = {}
+	self._flags = {} :: {[string]: any}
 	ActiveWindow = self
 
 	-- Load saved flags
@@ -359,6 +359,17 @@ function Library:Start(config: any)
 			if okDecode and type(decoded) == "table" then
 				self._flags = decoded
 			end
+		end
+	end
+
+	-- Toggle hotkey — default RightAlt, persisted by name
+	self._toggleKey = Enum.KeyCode.RightAlt
+	if self._flags.__ToggleKey then
+		local okKey, savedKey = pcall(function()
+			return (Enum.KeyCode :: any)[tostring(self._flags.__ToggleKey)]
+		end)
+		if okKey and savedKey then
+			self._toggleKey = savedKey
 		end
 	end
 
@@ -490,6 +501,44 @@ function Library:Start(config: any)
 	Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = minBtn })
 	reg(minBtn, "BackgroundColor3", "Warn")
 
+	-- Reopen icon (visible only while minimized)
+	local reopenIcon = Create("ImageButton", {
+		Name = "ReopenIcon",
+		Position = UDim2.new(0, 16, 0.5, -22),
+		Size = UDim2.new(0, 44, 0, 44),
+		BackgroundColor3 = Theme.Item,
+		BorderSizePixel = 0,
+		Image = "rbxassetid://10709751939",
+		ImageColor3 = Theme.Accent,
+		Visible = false,
+		AutoButtonColor = false,
+		Parent = self._gui,
+	})
+	Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = reopenIcon })
+	reg(reopenIcon, "BackgroundColor3", "Item")
+	reg(reopenIcon, "ImageColor3", "Accent")
+	local iconStroke = Create("UIStroke", { Color = Theme.Stroke, Thickness = 1, Parent = reopenIcon })
+	reg(iconStroke, "Color", "Stroke")
+
+	-- Central show/hide so main frame, reopen icon, and hotkey stay in sync
+	local function setWindowVisible(v: boolean)
+		self._mainFrame.Visible = v
+		reopenIcon.Visible = not v
+	end
+	self._setWindowVisible = setWindowVisible
+
+	reopenIcon.MouseButton1Click:Connect(function()
+		setWindowVisible(true)
+	end)
+
+	-- Toggle hotkey (skips while a keybind capture is in progress)
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed or self._capturing then return end
+		if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == self._toggleKey then
+			setWindowVisible(not self._mainFrame.Visible)
+		end
+	end)
+
 	closeBtn.MouseButton1Click:Connect(function()
 		if self._gui then
 			self._gui:Destroy()
@@ -498,7 +547,7 @@ function Library:Start(config: any)
 	end)
 
 	minBtn.MouseButton1Click:Connect(function()
-		self._mainFrame.Visible = false
+		setWindowVisible(false)
 	end)
 
 	-- Sidebar
@@ -572,11 +621,7 @@ function Library:Start(config: any)
 				resizing = false
 				self._flags.__WinW = math.floor(self._mainFrame.AbsoluteSize.X)
 				self._flags.__WinH = math.floor(self._mainFrame.AbsoluteSize.Y)
-				if self._saveFolder then
-					pcall(function()
-						writefile(self._saveFolder .. ".json", HttpService:JSONEncode(self._flags))
-					end)
-				end
+				self:SaveFlags()
 			end
 		end)
 		UserInputService.InputChanged:Connect(function(input)
@@ -602,7 +647,7 @@ function Library:Start(config: any)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			local now = tick()
 			if now - lastClick < 0.3 then
-				self._mainFrame.Visible = true
+				setWindowVisible(true)
 			end
 			lastClick = now
 		end
@@ -691,6 +736,7 @@ function Library:MakeTab(name: string)
 		Position = UDim2.new(0, 10, 0, 10),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
+		Visible = false,
 		ScrollBarThickness = 3,
 		ScrollBarImageColor3 = Theme.Scrollbar,
 		ScrollBarImageTransparency = 0.2,
@@ -839,6 +885,7 @@ function Library:MakeTab(name: string)
 		local content: string = config.Content or ""
 
 		local section: any = {}
+		local win = self -- window ref (section methods' `self` is the section table)
 
 		local frame = Create("Frame", {
 			Name = title .. "Section",
@@ -1014,8 +1061,8 @@ function Library:MakeTab(name: string)
 			local toggled = default
 
 			-- Check saved flag
-			if flag and self._saveFolder and self._flags[flag] ~= nil then
-				toggled = self._flags[flag]
+			if flag and win._saveFolder and win._flags[flag] ~= nil then
+				toggled = win._flags[flag]
 			end
 
 			local toggleFrame = Create("Frame", {
@@ -1093,11 +1140,9 @@ function Library:MakeTab(name: string)
 				}):Play()
 
 				-- Save flag
-				if flag and self._saveFolder then
-					self._flags[flag] = val
-					pcall(function()
-						writefile(self._saveFolder .. ".json", HttpService:JSONEncode(self._flags))
-					end)
+				if flag and win._saveFolder then
+					win._flags[flag] = val
+					win:SaveFlags()
 				end
 
 				if not silent then
@@ -1783,10 +1828,51 @@ function Library:MakeTab(name: string)
 	return tab
 end
 
-function Library:ToggleUI()
-	if self._mainFrame then
-		self._mainFrame.Visible = not self._mainFrame.Visible
+function Library:SaveFlags()
+	if self._saveFolder then
+		pcall(function()
+			writefile(self._saveFolder .. ".json", HttpService:JSONEncode(self._flags))
+		end)
 	end
+end
+
+function Library:ToggleUI()
+	if self._mainFrame and self._setWindowVisible then
+		self._setWindowVisible(not self._mainFrame.Visible)
+	end
+end
+
+-- Hotkey management ---------------------------------------------------------
+
+function Library:GetToggleKey(): Enum.KeyCode
+	return self._toggleKey
+end
+
+function Library:SetToggleKey(key: Enum.KeyCode)
+	self._toggleKey = key
+	self._flags.__ToggleKey = key.Name
+	self:SaveFlags()
+end
+
+-- Resolves the next key pressed within 5s; callback(nil) on timeout.
+-- While capturing, the toggle hotkey is suppressed.
+function Library:CaptureNextKey(callback: (Enum.KeyCode?) -> ())
+	self._capturing = true
+	local conn
+	conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		conn:Disconnect()
+		self._capturing = false
+		callback(input.KeyCode)
+	end)
+	task.delay(5, function()
+		if conn.Connected then
+			conn:Disconnect()
+			self._capturing = false
+			callback(nil)
+		end
+	end)
 end
 
 function Library:CloseUI()
