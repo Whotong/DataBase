@@ -97,6 +97,16 @@ local function hook(fn: () -> ())
 	fn()
 end
 
+-- Library-owned UserInputService connections (hotkey, drag, resize, sliders).
+-- Connected to the live service, so they must be tracked and torn down manually.
+local UISConns: {[number]: any} = {}
+
+local function uisConnect(event: string, fn: (...any) -> any)
+	local conn = (UserInputService :: any)[event]:Connect(fn)
+	table.insert(UISConns, conn)
+	return conn
+end
+
 -- Transparency only softens the big surface fills; items stay solid for readability.
 local function roleTransparency(role: string, baseT: number): number
 	if CurrentT <= 0 then return baseT end
@@ -177,12 +187,12 @@ local function MakeDraggable(topbar: Frame, frame: Frame)
 			startPos = frame.Position
 		end
 	end)
-	UserInputService.InputEnded:Connect(function(input)
+	uisConnect("InputEnded", function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
 		end
 	end)
-	UserInputService.InputChanged:Connect(function(input)
+	uisConnect("InputChanged", function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local delta = input.Position - dragStart
 			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
@@ -345,6 +355,9 @@ function Library:Start(config: any)
 	self._currentPage = nil
 	self._saveFolder = saveFolder
 	self._flags = {} :: {[string]: any}
+	self._closeHandlers = {}
+	self._closeCallback = closeCallback
+	self._closed = false
 	ActiveWindow = self
 
 	-- Load saved flags
@@ -532,7 +545,7 @@ function Library:Start(config: any)
 	end)
 
 	-- Toggle hotkey (skips while a keybind capture is in progress)
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	uisConnect("InputBegan", function(input, gameProcessed)
 		if gameProcessed or self._capturing then return end
 		if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == self._toggleKey then
 			setWindowVisible(not self._mainFrame.Visible)
@@ -540,10 +553,7 @@ function Library:Start(config: any)
 	end)
 
 	closeBtn.MouseButton1Click:Connect(function()
-		if self._gui then
-			self._gui:Destroy()
-		end
-		if closeCallback then closeCallback() end
+		self:CloseUI()
 	end)
 
 	minBtn.MouseButton1Click:Connect(function()
@@ -616,7 +626,7 @@ function Library:Start(config: any)
 				startPos = Vector2.new(input.Position.X, input.Position.Y)
 			end
 		end)
-		UserInputService.InputEnded:Connect(function(input)
+		uisConnect("InputEnded", function(input)
 			if resizing and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
 				resizing = false
 				self._flags.__WinW = math.floor(self._mainFrame.AbsoluteSize.X)
@@ -624,7 +634,7 @@ function Library:Start(config: any)
 				self:SaveFlags()
 			end
 		end)
-		UserInputService.InputChanged:Connect(function(input)
+		uisConnect("InputChanged", function(input)
 			if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 				local cam = workspace.CurrentCamera
 				local vp = cam and cam.ViewportSize or Vector2.new(1600, 900)
@@ -1288,13 +1298,13 @@ function Library:MakeTab(name: string)
 				end
 			end)
 
-			UserInputService.InputEnded:Connect(function(input)
+			uisConnect("InputEnded", function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 					sliding = false
 				end
 			end)
 
-			UserInputService.InputChanged:Connect(function(input)
+			uisConnect("InputChanged", function(input)
 				if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 					updateSlider(input.Position.X)
 				end
@@ -1875,7 +1885,20 @@ function Library:CaptureNextKey(callback: (Enum.KeyCode?) -> ())
 	end)
 end
 
+-- Registers a cleanup callback run on CloseUI (loops, connections, movement resets).
+function Library:OnClose(fn: () -> ())
+	table.insert(self._closeHandlers, fn)
+end
+
 function Library:CloseUI()
+	if self._closed then return end
+	self._closed = true
+
+	-- Caller cleanup first (stops loops, restores movement)
+	for _, fn in ipairs(self._closeHandlers) do
+		pcall(fn)
+	end
+
 	if self._gui then
 		self._gui:Destroy()
 	end
@@ -1883,9 +1906,22 @@ function Library:CloseUI()
 		NotifContainer:Destroy()
 		NotifContainer = nil
 	end
+
+	-- Disconnect tracked UserInputService connections
+	for _, conn in ipairs(UISConns) do
+		pcall(function()
+			conn:Disconnect()
+		end)
+	end
+	table.clear(UISConns)
+
 	StyleReg = {}
 	HookReg = {}
 	ActiveWindow = nil
+
+	if self._closeCallback then
+		pcall(self._closeCallback)
+	end
 end
 
 return Library
