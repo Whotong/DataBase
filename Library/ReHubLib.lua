@@ -1847,8 +1847,9 @@ function Library:SaveFlags()
 end
 
 function Library:ToggleUI()
-	if self._mainFrame and self._setWindowVisible then
-		self._setWindowVisible(not self._mainFrame.Visible)
+	local win = (self == Library) and ActiveWindow or self
+	if win and win._mainFrame and win._setWindowVisible then
+		win._setWindowVisible(not win._mainFrame.Visible)
 	end
 end
 
@@ -1887,20 +1888,23 @@ end
 
 -- Registers a cleanup callback run on CloseUI (loops, connections, movement resets).
 function Library:OnClose(fn: () -> ())
-	table.insert(self._closeHandlers, fn)
+	table.insert(self._closeHandlers or {}, fn)
 end
 
+-- Accepts the window instance; a call on the raw Library table is
+-- re-routed to the active window so Library:CloseUI() also works.
 function Library:CloseUI()
-	if self._closed then return end
-	self._closed = true
+	local win = (self == Library) and ActiveWindow or self
+	if not win or win._closed then return end
+	win._closed = true
 
 	-- Caller cleanup first (stops loops, restores movement)
-	for _, fn in ipairs(self._closeHandlers) do
+	for _, fn in ipairs(win._closeHandlers or {}) do
 		pcall(fn)
 	end
 
-	if self._gui then
-		self._gui:Destroy()
+	if win._gui then
+		win._gui:Destroy()
 	end
 	if NotifContainer then
 		NotifContainer:Destroy()
@@ -1919,8 +1923,8 @@ function Library:CloseUI()
 	HookReg = {}
 	ActiveWindow = nil
 
-	if self._closeCallback then
-		pcall(self._closeCallback)
+	if win._closeCallback then
+		pcall(win._closeCallback)
 	end
 end
 
