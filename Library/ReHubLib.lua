@@ -331,6 +331,12 @@ end
 -- killed the last one. Ring buffer, last 50.
 -- ═══════════════════════════════════════════
 local ErrorLog: { [number]: any } = {}
+local ErrorWatchers: { [number]: (any) -> () } = {}
+
+--- Subscribe to new errors (re-render hooks). Cleared on CloseUI.
+function Library:WatchErrors(fn: (any) -> ())
+	table.insert(ErrorWatchers, fn)
+end
 
 local function sharedLog(): { [number]: any }
 	local env = (type(getgenv) == "function" and getgenv()) or {}
@@ -365,6 +371,9 @@ function Library:ReportError(source: string, err: any)
 			end
 		end
 		print("REHUB_ERR [" .. source .. "] " .. msg)
+		for _, fn in ipairs(ErrorWatchers) do
+			pcall(fn, entry)
+		end
 		self:Notify({
 			Title = "Error — " .. source,
 			Content = msg,
@@ -1996,6 +2005,7 @@ function Library:CloseUI()
 
 	StyleReg = {}
 	HookReg = {}
+	table.clear(ErrorWatchers)
 	ActiveWindow = nil
 
 	if win._closeCallback then
