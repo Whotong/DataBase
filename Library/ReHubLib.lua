@@ -325,6 +325,78 @@ function Library:Notify(config: any)
 end
 
 -- ═══════════════════════════════════════════
+-- ERROR BUS — one funnel for failures (user toast + dev feed + log).
+-- Never throws: every step is pcall-guarded, including this function.
+-- Log survives reloads via getgenv so a fresh instance can show what
+-- killed the last one. Ring buffer, last 50.
+-- ═══════════════════════════════════════════
+local ErrorLog: { [number]: any } = {}
+
+local function sharedLog(): { [number]: any }
+	local env = (type(getgenv) == "function" and getgenv()) or {}
+	if type(env.ReHubErrors) ~= "table" then
+		pcall(function()
+			env.ReHubErrors = {}
+		end)
+	end
+	if type(env.ReHubErrors) == "table" then
+		return env.ReHubErrors
+	end
+	return ErrorLog
+end
+
+function Library:ReportError(source: string, err: any)
+	pcall(function()
+		source = tostring(source or "unknown")
+		local msg = tostring(err or "unknown error")
+		if #msg > 220 then
+			msg = msg:sub(1, 220) .. "…"
+		end
+		local entry = { t = os.date("%H:%M:%S"), source = source, message = msg }
+		table.insert(ErrorLog, entry)
+		if #ErrorLog > 50 then
+			table.remove(ErrorLog, 1)
+		end
+		local shared = sharedLog()
+		if shared ~= ErrorLog then
+			table.insert(shared, entry)
+			while #shared > 50 do
+				table.remove(shared, 1)
+			end
+		end
+		print("REHUB_ERR [" .. source .. "] " .. msg)
+		self:Notify({
+			Title = "Error — " .. source,
+			Content = msg,
+			Color = Theme.Danger,
+			Delay = 12,
+		})
+	end)
+end
+
+function Library:GetErrors(): { [number]: any }
+	local out = {}
+	for _, e in ipairs(ErrorLog) do
+		table.insert(out, e)
+	end
+	local shared = sharedLog()
+	if shared ~= ErrorLog then
+		for _, e in ipairs(shared) do
+			table.insert(out, e)
+		end
+	end
+	return out
+end
+
+function Library:ClearErrors()
+	table.clear(ErrorLog)
+	local shared = sharedLog()
+	if shared ~= ErrorLog then
+		table.clear(shared)
+	end
+end
+
+-- ═══════════════════════════════════════════
 -- WINDOW
 -- ═══════════════════════════════════════════
 local SIDEBAR_W = 140
