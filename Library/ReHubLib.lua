@@ -1079,6 +1079,9 @@ function Library:MakeTab(name: string)
 				Name = toggleTitle .. "Toggle",
 				Size = UDim2.new(1, 0, 0, toggleHeight),
 				BackgroundTransparency = 1,
+				-- Invisible rows don't receive input unless Active: without this,
+				-- clicks fall through to the game and only exact gaps fire.
+				Active = true,
 				Parent = itemsFrame,
 			})
 
