@@ -650,7 +650,8 @@ function Library:_layout()
 	self._nav.Position=bottom and UDim2.new(0,12,1,-60) or UDim2.fromOffset(12,head+12)
 	self._nav.Size=bottom and UDim2.new(1,-24,0,52) or UDim2.new(0,rail-24,1,-head-36)
 	self._navLayout.FillDirection=bottom and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
-	for _,button in pairs(self._navButtons) do button.Size=bottom and UDim2.new(1/3,-6,0,44) or UDim2.new(1,0,0,42) end
+	local navCount=0 for _,button in pairs(self._navButtons) do if button.Visible then navCount+=1 end end
+	for _,button in pairs(self._navButtons) do button.Size=bottom and UDim2.new(1/math.max(1,navCount),-6,0,44) or UDim2.new(1,0,0,42) end
 	for name,icon in pairs(self._navIcons) do
 		icon.Visible=not bottom
 		local button=self._navButtons[name]
@@ -807,8 +808,12 @@ function Library:Finalize(shortcuts)
 	self._shortcutEmpty.Visible=#self._shortcutRows==0
 	self._shortcutEmpty.Text="No quick actions are available in this place. See Actions for details."
 	self._quick.Visible=#self._shortcutRows>0
-	self._welcome.Visible=#self._shortcutRows==0
+	local hasHomeReports=#self._pages.Home.Sections>0
+	self._welcome.Visible=#self._shortcutRows==0 and not hasHomeReports
 	local hasActions=#self._actionOrder>0
+	self._enabledLabel.Visible=hasActions or not hasHomeReports
+	self._navButtons.Actions.Visible=hasActions or not hasHomeReports
+	if hasHomeReports and not hasActions and self._currentPage=="Actions" then self:ShowTab("Home") end
 	self._welcomeTitle.Text=hasActions and "Everything in one place" or "Your workspace is ready"
 	self._welcomeText.Text=hasActions and "Browse your available controls in Actions. Every feature starts off until you enable it."
 		or "Game actions haven't been added for this experience yet. You can personalize your interface in Settings."
