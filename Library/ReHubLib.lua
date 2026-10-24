@@ -11,9 +11,9 @@ local Section = {}
 Section.__index = Section
 local Tokens = {
 	Color = {
-		Canvas = Color3.fromRGB(16,21,26), Shell = Color3.fromRGB(21,29,35), Raised = Color3.fromRGB(29,40,48),
-		Hover = Color3.fromRGB(38,52,61), Text = Color3.fromRGB(238,243,241), Secondary = Color3.fromRGB(175,191,190),
-		Quiet = Color3.fromRGB(137,157,156), Divider = Color3.fromRGB(52,69,76), Accent = Color3.fromRGB(182,214,205),
+		Canvas = Color3.fromRGB(13,18,27), Shell = Color3.fromRGB(23,31,44), Raised = Color3.fromRGB(32,44,59),
+		Hover = Color3.fromRGB(43,61,75), Text = Color3.fromRGB(240,245,250), Secondary = Color3.fromRGB(180,196,211),
+		Quiet = Color3.fromRGB(146,168,188), Divider = Color3.fromRGB(68,88,109), Accent = Color3.fromRGB(157,220,207),
 		Active = Color3.fromRGB(208,233,224), Warning = Color3.fromRGB(220,198,155), Error = Color3.fromRGB(240,165,160),
 	},
 	Space = {4,8,12,16,24,32}, Radius = {Shell=18, Panel=12, Control=9},
@@ -43,7 +43,7 @@ local function list(inst, gap, horizontal)
 end
 local function label(parent, text, size, color, bold)
 	return create("TextLabel", {BackgroundTransparency=1, BorderSizePixel=0, Text=text or "", TextColor3=color or C.Text,
-		Font=bold and Enum.Font.GothamSemibold or Enum.Font.Gotham, TextSize=size or 14, TextWrapped=true,
+		Font=bold and Enum.Font.GothamBold or Enum.Font.GothamMedium, TextSize=size or 14, TextWrapped=true,
 		TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Top,
 		Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y}, parent)
 end
@@ -99,8 +99,12 @@ function Library:_button(parent, text, callback, width)
 		TextWrapped=true, TextColor3=C.Text, BackgroundColor3=C.Raised, BorderSizePixel=0,
 		Size=UDim2.new(width and 0 or 1,width or 0,0,44), AutoButtonColor=false, Selectable=true}, parent)
 	round(button) pad(button,8,4)
-	local stroke = create("UIStroke", {Color=C.Divider, Thickness=1, Transparency=0.5, ApplyStrokeMode=Enum.ApplyStrokeMode.Border},button)
-	local function hover(on) self:_tween(button,Tokens.Motion.Feedback,{BackgroundColor3=on and C.Hover or C.Raised}) end
+	local stroke = create("UIStroke", {Color=C.Divider, Thickness=1, Transparency=0.55, ApplyStrokeMode=Enum.ApplyStrokeMode.Border},button)
+	create("UIGradient", {Rotation=90,Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(210,225,240))},button)
+	local function hover(on)
+		local selected=self._navButtons and self._navButtons[self._currentPage]==button
+		self:_tween(button,Tokens.Motion.Feedback,{BackgroundColor3=(on or selected) and C.Hover or C.Raised})
+	end
 	self:Connect(button.MouseEnter,function() hover(true) end)
 	self:Connect(button.MouseLeave,function() hover(false) end)
 	self:Connect(button.SelectionGained,function() stroke.Color=C.Accent end)
@@ -288,7 +292,7 @@ function Library:MakeTab(name)
 		Size=UDim2.fromScale(1,1),CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,
 		ScrollBarThickness=3,ScrollBarImageColor3=C.Divider,ScrollingDirection=Enum.ScrollingDirection.Y,
 		Visible=false,ClipsDescendants=true},win._content)
-	pad(scroll,24,24) list(scroll,24)
+	pad(scroll,24,24) list(scroll,20)
 	local page={Name=name,Frame=scroll,Sections={},Window=win}
 	function page:Section(config)
 		config=config or {}
@@ -587,7 +591,12 @@ function Library:ShowTab(name)
 	for pageName,page in pairs(win._pages) do
 		page.Frame.Visible=pageName==name
 		local button=win._navButtons[pageName]
-		if button then button.BackgroundColor3=pageName==name and C.Hover or C.Shell button.TextColor3=pageName==name and C.Accent or C.Secondary end
+		if button then
+			button.BackgroundColor3=pageName==name and C.Hover or C.Raised
+			button.TextColor3=pageName==name and C.Accent or C.Secondary
+			local stroke=button:FindFirstChildOfClass("UIStroke")
+			if stroke then stroke.Color=pageName==name and C.Accent or C.Divider stroke.Transparency=pageName==name and 0.5 or 0.8 end
+		end
 	end
 	win._currentPage=name win._prefs.Page=name win:_savePrefs()
 end
@@ -619,37 +628,46 @@ function Library:_layout()
 	local compact=area.X<640
 	local short=usableH<500
 	local margin=compact and 8 or short and 12 or 24
-	local w=math.min(self._prefs.Width or 920,availW-margin*2)
-	local h=math.min(self._prefs.Height or 620,availH-margin*2)
+	local w=math.min(self._prefs.Width or 720,availW-margin*2,compact and availW or availW*0.86)
+	local h=math.min(self._prefs.Height or 480,availH-margin*2,short and availH or availH*0.86)
 	if compact then w=availW-16 h=availH-16 end
 	w=math.max(1,w) h=math.max(1,h)
 	self._mainFrame.Size=UDim2.fromOffset(w,h)
 	local x=compact and margin or math.clamp(self._prefs.X or (availW-w)/2,margin,math.max(margin,availW-w-margin))
 	local y=compact and margin or math.clamp(self._prefs.Y or (availH-h)/2,margin,math.max(margin,availH-h-margin))
 	self._mainFrame.Position=UDim2.fromOffset(x,y)
+	self._shadow.Size=UDim2.fromOffset(w+16,h+16)
+	self._shadow.Position=UDim2.fromOffset(x-8,y+4)
 	self._compact,self._short=compact,short
-	local head=short and 68 or 88
+	local head=short and 68 or 78
 	self._header.Size=UDim2.new(1,0,0,head)
-	self._brand.TextSize=short and 16 or 18
-	self._gameLabel.Position=UDim2.fromOffset(16,short and 27 or 33)
-	self._readiness.Position=UDim2.fromOffset(16,short and 46 or 56)
+	self._brand.TextSize=20
+	self._gameLabel.Position=UDim2.fromOffset(22,short and 34 or 40)
+	self._readiness.Position=UDim2.fromOffset(22,short and 50 or 57)
 	local bottom=compact and not short
-	local rail=bottom and 0 or (short and 108 or 132)
+	local rail=bottom and 0 or (short and 120 or 152)
 	local navHeight=bottom and 60 or 0
-	self._nav.Position=bottom and UDim2.new(0,8,1,-60) or UDim2.fromOffset(8,head+8)
-	self._nav.Size=bottom and UDim2.new(1,-16,0,52) or UDim2.new(0,rail-16,1,-head-16)
+	self._nav.Position=bottom and UDim2.new(0,12,1,-60) or UDim2.fromOffset(12,head+12)
+	self._nav.Size=bottom and UDim2.new(1,-24,0,52) or UDim2.new(0,rail-24,1,-head-36)
 	self._navLayout.FillDirection=bottom and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
-	for _,button in pairs(self._navButtons) do button.Size=bottom and UDim2.new(1/3,-6,0,48) or UDim2.new(1,0,0,48) end
+	for _,button in pairs(self._navButtons) do button.Size=bottom and UDim2.new(1/3,-6,0,44) or UDim2.new(1,0,0,42) end
+	for name,icon in pairs(self._navIcons) do
+		icon.Visible=not bottom
+		local button=self._navButtons[name]
+		button.TextXAlignment=bottom and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
+		local padding=button:FindFirstChildOfClass("UIPadding")
+		padding.PaddingLeft=UDim.new(0,bottom and 8 or 36)
+	end
 	local stopHeight=self._stopBar.Visible and 52 or 0
 	self._stopBar.Position=UDim2.new(0,rail+12,1,-navHeight-stopHeight)
 	self._stopBar.Size=UDim2.new(1,-rail-24,0,44)
-	self._content.Position=UDim2.fromOffset(rail,head)
-	self._content.Size=UDim2.new(1,-rail,1,-head-navHeight-stopHeight)
+	self._content.Position=UDim2.fromOffset(rail,head+8)
+	self._content.Size=UDim2.new(1,-rail-12,1,-head-navHeight-stopHeight-20)
 	for _,page in pairs(self._pages) do
 		local padding=page.Frame:FindFirstChildOfClass("UIPadding")
-		local inset=(compact or short) and 16 or 24
+		local inset=(compact or short) and 16 or 22
 		padding.PaddingLeft=UDim.new(0,inset) padding.PaddingRight=UDim.new(0,inset)
-		padding.PaddingTop=UDim.new(0,short and 12 or 24)
+		padding.PaddingTop=UDim.new(0,short and 12 or 20)
 	end
 	local horizontal=w-rail>=700
 	self._shortcutLayout.FillDirection=horizontal and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
@@ -658,7 +676,7 @@ function Library:_layout()
 	self._mist.Visible=not self._prefs.LowEffects
 	self._mist.Size=UDim2.new(1,0,1,0)
 	self._resize.Visible=not compact and not short
-	self._resize.Position=UDim2.new(0,rail-8,1,-8)
+	self._resize.Position=UDim2.new(1,-4,1,-4)
 	self._notifications.Size=UDim2.new(0,math.min(330,availW-32),0,0)
 	self._notifications.Position=UDim2.new(1,-16,1,-navHeight-stopHeight-16)
 	local lx=math.clamp(self._prefs.LauncherX or availW-116,8,math.max(8,availW-116))
@@ -701,6 +719,7 @@ end
 function Library:ToggleUI()
 	local win=resolve(self)
 	win._mainFrame.Visible=not win._mainFrame.Visible win._launcher.Visible=not win._mainFrame.Visible
+	win._backdrop.Visible=win._mainFrame.Visible win._shadow.Visible=win._mainFrame.Visible
 end
 function Library:GetToggleKey() return Enum.KeyCode[resolve(self)._prefs.Hotkey] or Enum.KeyCode.RightAlt end
 function Library:SetToggleKey(key)
@@ -787,24 +806,41 @@ function Library:Finalize(shortcuts)
 	end
 	self._shortcutEmpty.Visible=#self._shortcutRows==0
 	self._shortcutEmpty.Text="No quick actions are available in this place. See Actions for details."
+	self._quick.Visible=#self._shortcutRows>0
+	self._welcome.Visible=#self._shortcutRows==0
+	local hasActions=#self._actionOrder>0
+	self._welcomeTitle.Text=hasActions and "Everything in one place" or "Your workspace is ready"
+	self._welcomeText.Text=hasActions and "Browse your available controls in Actions. Every feature starts off until you enable it."
+		or "Game actions haven't been added for this experience yet. You can personalize your interface in Settings."
+	self._welcomeButton.Text=hasActions and "Browse actions" or "Customize interface"
 	for _,section in ipairs(self._sections) do section:_refreshConfig() end
 	self:_updateActions()
 end
 function Library:_buildHome(config)
 	local home=self._pages.Home.Frame
-	local intro=frame(home,"Introduction") list(intro,8) intro.LayoutOrder=0
-	label(intro,"Re: Hub",26,C.Text,true)
-	label(intro,"Your controls for supported Roblox experiences.",15,C.Secondary)
-	local experience=frame(home,"Experience") list(experience,6) experience.LayoutOrder=1
-	label(experience,"Connected experience",12,C.Quiet)
-	label(experience,config.ExperienceName or "Experience not configured",22,C.Text,true)
-	self._experienceStatus=label(experience,config.Status or "Loading available controls…",14,C.Accent)
-	self._enabledLabel=label(experience,"0 actions enabled",12,C.Quiet)
+	local intro=frame(home,"Introduction") list(intro,6) intro.LayoutOrder=0
+	label(intro,"Overview",26,C.Text,true)
+	label(intro,"Your experience, at a glance.",13,C.Secondary)
+	local experience=frame(home,"Experience") list(experience,10) experience.LayoutOrder=1
+	experience.BackgroundColor3=C.Raised experience.BackgroundTransparency=0 round(experience,14) pad(experience,20,18)
+	create("UIStroke",{Color=C.Divider,Transparency=0.6,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},experience)
+	create("UIGradient",{Rotation=25,Color=ColorSequence.new(Color3.fromRGB(255,255,255),Color3.fromRGB(170,193,218))},experience)
+	self._experienceTitle=label(experience,config.ExperienceName or "Experience not configured",24,C.Text,true)
+	self._experienceStatus=label(experience,config.Status or "Loading available controls…",13,C.Accent)
+	self._enabledLabel=label(experience,"0 actions enabled",13,C.Quiet)
 	local quick=frame(home,"Quick actions") list(quick,12) quick.LayoutOrder=2
+	self._quick=quick
 	label(quick,"Quick actions",18,C.Text,true)
 	self._shortcutContainer=frame(quick,"Shortcuts") self._shortcutContainer.LayoutOrder=1
 	self._shortcutLayout=list(self._shortcutContainer,12)
 	self._shortcutEmpty=label(quick,"Loading available controls…",14,C.Quiet) self._shortcutEmpty.LayoutOrder=2
+	local welcome=frame(home,"Workspace") list(welcome,10) welcome.LayoutOrder=2 self._welcome=welcome
+	self._welcomeTitle=label(welcome,"Your workspace is ready",18,C.Text,true)
+	self._welcomeText=label(welcome,"Loading available controls…",14,C.Secondary)
+	self._welcomeButton=self:_button(welcome,"Customize interface",function()
+		self:ShowTab(#self._actionOrder>0 and "Actions" or "Settings")
+	end)
+	self._welcomeButton.LayoutOrder=1 self._welcomeButton.TextColor3=C.Accent
 	if type(config.Featured)=="table" and config.Featured.Title and config.Featured.Content then
 		local featured=frame(home,"Featured") list(featured,8) featured.LayoutOrder=3
 		label(featured,config.Featured.Title,18,C.Text,true) label(featured,config.Featured.Content,14,C.Secondary)
@@ -817,7 +853,7 @@ function Library:_buildHome(config)
 			any=true self:_button(links,link.Label,function() self:CopyLink(link.Label:gsub("^Copy ",""),link.URL) end)
 		end
 	end
-	if not any then label(links,"Community links are not configured.",14,C.Quiet) end
+	links.Visible=any
 end
 function Library:_buildSettings(config)
 	local settings=self._pages.Settings
@@ -875,7 +911,7 @@ function Library:Start(config)
 	end
 	local win=setmetatable({},Library) activeWindow=win
 	win._connections={} win._overlayConnections={} win._tasks={} win._tweens={}
-	win._pages={} win._sections={} win._actions={} win._actionOrder={} win._navButtons={} win._shortcutRows={}
+	win._pages={} win._sections={} win._actions={} win._actionOrder={} win._navButtons={} win._navIcons={} win._shortcutRows={}
 	win._closeHandlers={} win._errors={} win._errorTimes={} win._errorWatchers={} win._notices={}
 	win._saveFolder=config.SaveFolder win._flags={}
 	if win._saveFolder and type(readfile)=="function" then
@@ -886,8 +922,12 @@ function Library:Start(config)
 		end
 	end
 	local saved=type(win._flags.Interface)=="table" and win._flags.Interface or {}
+	-- Retain interface preferences, but retire oversized geometry from the first Mist layout.
+	if saved.LayoutRevision~=2 then
+		saved=table.clone(saved) saved.Width=nil saved.Height=nil saved.X=nil saved.Y=nil
+	end
 	win._prefs={Scale=math.clamp(tonumber(saved.Scale) or 1,0.85,1.25),Hotkey="RightAlt",Page="Home",
-		ReducedMotion=saved.ReducedMotion==true,LowEffects=saved.LowEffects==true,Notifications=saved.Notifications~=false}
+		ReducedMotion=saved.ReducedMotion==true,LowEffects=saved.LowEffects==true,Notifications=saved.Notifications~=false,LayoutRevision=2}
 	for _,key in ipairs({"Width","Height","X","Y","LauncherX","LauncherY"}) do
 		local n=tonumber(saved[key]) if n and n==n and math.abs(n)<10000 then win._prefs[key]=n end
 	end
@@ -910,33 +950,57 @@ function Library:Start(config)
 	end)
 	if not safeOK then warn("Re: Hub safe-area fallback: "..tostring(safeErr)) end
 	win._root=create("Frame",{Name="SafeArea",Size=UDim2.fromScale(1,1),BackgroundTransparency=1},win._gui)
+	win._backdrop=create("Frame",{Name="Backdrop",Size=UDim2.fromScale(1,1),BackgroundColor3=C.Canvas,
+		BackgroundTransparency=0.4,BorderSizePixel=0,Active=false},win._root)
 	win._stage=create("Frame",{Name="ScaledStage",BackgroundTransparency=1,Size=UDim2.fromScale(1,1)},win._root)
 	win._scale=create("UIScale",{Scale=win._prefs.Scale},win._stage)
-	win._mainFrame=create("Frame",{Name="MistShell",Size=UDim2.fromOffset(920,620),BackgroundColor3=C.Shell,
+	win._shadow=create("Frame",{Name="WindowShadow",BackgroundColor3=Color3.fromRGB(0,0,0),BackgroundTransparency=0.65,BorderSizePixel=0},win._stage)
+	round(win._shadow,24)
+	create("UIStroke",{Color=C.Canvas,Transparency=0.82,Thickness=7},win._shadow)
+	win._mainFrame=create("Frame",{Name="MistShell",Size=UDim2.fromOffset(720,480),BackgroundColor3=Color3.fromRGB(255,255,255),
 		BorderSizePixel=0,ClipsDescendants=true},win._stage) round(win._mainFrame,18)
-	create("UIStroke",{Color=C.Divider,Transparency=0.35,Thickness=1},win._mainFrame)
-	win._header=create("Frame",{Name="Header",Size=UDim2.new(1,0,0,88),BackgroundColor3=C.Shell,BorderSizePixel=0},win._mainFrame)
+	create("UIGradient",{Rotation=70,Color=ColorSequence.new(C.Shell,C.Canvas)},win._mainFrame)
+	create("UIStroke",{Color=C.Divider,Transparency=0.2,Thickness=1},win._mainFrame)
+	win._header=create("Frame",{Name="Header",Size=UDim2.new(1,0,0,78),BackgroundTransparency=1,BorderSizePixel=0},win._mainFrame)
 	win._mist=create("Frame",{Name="MistEdge",Size=UDim2.new(1,0,0,88),BackgroundColor3=C.Accent,
-		BackgroundTransparency=0.94,BorderSizePixel=0,Active=false},win._header)
+		BackgroundTransparency=0.88,BorderSizePixel=0,Active=false},win._header) round(win._mist,18)
 	create("UIGradient",{Rotation=12,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0.25),NumberSequenceKeypoint.new(0.5,0.8),NumberSequenceKeypoint.new(1,1)})},win._mist)
 	local drag=create("Frame",{Name="HeaderDrag",Size=UDim2.new(1,-164,1,0),BackgroundTransparency=1,Active=true},win._header)
-	win._brand=label(drag,"Re: Hub",18,C.Text,true) win._brand.Position=UDim2.fromOffset(16,8)
+	win._brand=label(drag,"Re: Hub",20,C.Text,true) win._brand.Position=UDim2.fromOffset(22,13)
 	win._brand.Size=UDim2.new(1,-20,0,22) win._brand.AutomaticSize=Enum.AutomaticSize.None
-	win._gameLabel=label(drag,config.ExperienceName or "Experience not configured",14,C.Secondary)
+	win._gameLabel=label(drag,"Mist  /  Control center",13,C.Secondary)
 	win._gameLabel.Size=UDim2.new(1,-20,0,18) win._gameLabel.AutomaticSize=Enum.AutomaticSize.None
 	win._gameLabel.TextWrapped=false win._gameLabel.TextTruncate=Enum.TextTruncate.AtEnd
 	win._readiness=label(drag,config.Status or "Loading…",12,C.Accent)
+	win._readiness.Visible=false
 	win._readiness.Size=UDim2.new(1,-20,0,16) win._readiness.AutomaticSize=Enum.AutomaticSize.None
 	win._readiness.TextWrapped=false win._readiness.TextTruncate=Enum.TextTruncate.AtEnd
-	local minimize=win:_button(win._header,"Hide",function() win:ToggleUI() end,64) minimize.Position=UDim2.new(1,-148,0,12)
-	local unload=win:_button(win._header,"Unload",function() win:Unload() end,64) unload.Position=UDim2.new(1,-76,0,12)
+	local minimize=win:_button(win._header,"Hide",function() win:ToggleUI() end,64) minimize.Position=UDim2.new(1,-156,0,17) minimize.Size=UDim2.fromOffset(64,36)
+	local unload=win:_button(win._header,"Unload",function() win:Unload() end,64) unload.Position=UDim2.new(1,-84,0,17) unload.Size=UDim2.fromOffset(64,36)
 	win._nav=create("Frame",{Name="Navigation",BackgroundTransparency=1},win._mainFrame)
 	win._navLayout=list(win._nav,8)
-	win._content=create("Frame",{Name="Content",BackgroundTransparency=1,ClipsDescendants=true},win._mainFrame)
+	win._content=create("Frame",{Name="Content",BackgroundColor3=C.Canvas,BackgroundTransparency=0.2,BorderSizePixel=0,ClipsDescendants=true},win._mainFrame) round(win._content,14)
 	for index,name in ipairs({"Home","Actions","Settings"}) do
 		win:MakeTab(name)
 		local button=win:_button(win._nav,name,function() win:ShowTab(name) end) button.LayoutOrder=index
 		win._navButtons[name]=button
+		-- UIPadding offsets children as well as text; place the icon in that left inset.
+		local icon=create("Frame",{Name="Icon",Size=UDim2.fromOffset(16,16),Position=UDim2.new(0,-24,0.5,-8),BackgroundTransparency=1},button)
+		win._navIcons[name]=icon
+		if name=="Home" then
+			for _,p in ipairs({{0,0},{9,0},{0,9},{9,9}}) do
+				local tile=create("Frame",{Size=UDim2.fromOffset(6,6),Position=UDim2.fromOffset(p[1],p[2]),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(tile,2)
+			end
+		elseif name=="Actions" then
+			for i=0,2 do
+				create("Frame",{Size=UDim2.fromOffset(16,1),Position=UDim2.fromOffset(0,i*6+1),BackgroundColor3=C.Secondary,BorderSizePixel=0},icon)
+				local knob=create("Frame",{Size=UDim2.fromOffset(4,4),Position=UDim2.fromOffset(i==1 and 9 or 3,i*6),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(knob,2)
+			end
+		else
+			local ring=create("Frame",{Size=UDim2.fromOffset(14,14),Position=UDim2.fromOffset(1,1),BackgroundTransparency=1},icon) round(ring,7)
+			create("UIStroke",{Color=C.Secondary,Thickness=1.5},ring)
+			local center=create("Frame",{Size=UDim2.fromOffset(4,4),Position=UDim2.fromOffset(6,6),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(center,2)
+		end
 	end
 	win._stopBar=create("Frame",{Name="StopBar",BackgroundTransparency=1,Visible=false},win._mainFrame)
 	win:_button(win._stopBar,"Stop all enabled actions",function() win:StopAll() end)
@@ -944,6 +1008,11 @@ function Library:Start(config)
 	win._launcher.Visible=false
 	win._resize=win:_button(win._mainFrame,"↘",nil,44)
 	win._resize.AnchorPoint=Vector2.new(1,1) win._resize.Position=UDim2.new(1,0,1,0) win._resize.BackgroundTransparency=1
+	win._resize.Text="" win._resize:FindFirstChildOfClass("UIStroke").Transparency=1
+	for i=0,1 do
+		create("Frame",{Name="Grip",Size=UDim2.fromOffset(8-i*3,1),AnchorPoint=Vector2.new(1,1),
+			Position=UDim2.new(1,-3,1,-3-i*5),Rotation=-45,BackgroundColor3=C.Quiet,BorderSizePixel=0},win._resize)
+	end
 	win._notifications=frame(win._stage,"Notifications") win._notifications.AnchorPoint=Vector2.new(1,1)
 	win._notifications.Position=UDim2.new(1,-16,1,-16) win._notifications.ZIndex=30
 	list(win._notifications,8).VerticalAlignment=Enum.VerticalAlignment.Bottom
