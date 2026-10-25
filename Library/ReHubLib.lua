@@ -274,20 +274,49 @@ function Library:_actionView(parent,action,shortcut)
 	table.insert(action._views,render)
 	self:_activate(control,function() if action.Kind=="Toggle" then action:Set(not action.Enabled) else action:Invoke() end end)
 	if shortcut and action._section then
-		local settings=self:_button(body,action._section.HasConfig and "Settings →" or "View in Actions →",function() self:FocusSection(action._section) end) settings.LayoutOrder=10
+		local settings=self:_button(body,action._section.HasConfig and "Settings →" or "View in "..action._section.Page.Name.." →",function() self:FocusSection(action._section) end) settings.LayoutOrder=10
 	end
 	render() return row
 end
 
 -- All content regions have one vertical scroll owner. Section configuration
 -- expands inside it; dropdowns use a separate modal instead of nested scrolling.
+function Library:_navigationButton(name)
+	local win=self
+	local index=({Home=1,Actions=2,Shops=3,Settings=4})[name]
+	local button=win:_button(win._nav,name,function() win:ShowTab(name) end) button.LayoutOrder=index
+	win._navButtons[name]=button
+	-- UIPadding offsets children as well as text; place the icon in that left inset.
+	local icon=create("Frame",{Name="Icon",Size=UDim2.fromOffset(16,16),Position=UDim2.new(0,-24,0.5,-8),BackgroundTransparency=1},button)
+	win._navIcons[name]=icon
+	if name=="Home" then
+		for _,p in ipairs({{0,0},{9,0},{0,9},{9,9}}) do
+			local tile=create("Frame",{Size=UDim2.fromOffset(6,6),Position=UDim2.fromOffset(p[1],p[2]),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(tile,2)
+		end
+	elseif name=="Actions" then
+		for i=0,2 do
+			create("Frame",{Size=UDim2.fromOffset(16,1),Position=UDim2.fromOffset(0,i*6+1),BackgroundColor3=C.Secondary,BorderSizePixel=0},icon)
+			local knob=create("Frame",{Size=UDim2.fromOffset(4,4),Position=UDim2.fromOffset(i==1 and 9 or 3,i*6),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(knob,2)
+		end
+	elseif name=="Shops" then
+		local bag=create("Frame",{Size=UDim2.fromOffset(14,12),Position=UDim2.fromOffset(1,4),BackgroundTransparency=1},icon) round(bag,3)
+		create("UIStroke",{Color=C.Secondary,Thickness=1.3},bag)
+		local handle=create("Frame",{Size=UDim2.fromOffset(6,7),Position=UDim2.fromOffset(5,0),BackgroundTransparency=1},icon) round(handle,3)
+		create("UIStroke",{Color=C.Accent,Thickness=1.3},handle)
+	else
+		local ring=create("Frame",{Size=UDim2.fromOffset(14,14),Position=UDim2.fromOffset(1,1),BackgroundTransparency=1},icon) round(ring,7)
+		create("UIStroke",{Color=C.Secondary,Thickness=1.5},ring)
+		local center=create("Frame",{Size=UDim2.fromOffset(4,4),Position=UDim2.fromOffset(6,6),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(center,2)
+	end
+end
+
 function Library:MakeTab(name)
 	local win=resolve(self)
 	if name=="Main" or name=="Automation" or name=="Misc" then
 		return {Section=function(_,config) return win._pages.Actions:Section(config) end}
 	end
 	if win._pages[name] then return win._pages[name] end
-	assert(name=="Home" or name=="Actions" or name=="Settings","Use sections inside Actions for game content")
+	assert(name=="Home" or name=="Actions" or name=="Shops" or name=="Settings","Use a supported hub page")
 	local scroll=create("ScrollingFrame",{Name=name,BackgroundTransparency=1,BorderSizePixel=0,
 		Size=UDim2.fromScale(1,1),CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,
 		ScrollBarThickness=3,ScrollBarImageColor3=C.Divider,ScrollingDirection=Enum.ScrollingDirection.Y,
@@ -296,7 +325,7 @@ function Library:MakeTab(name)
 	local page={Name=name,Frame=scroll,Sections={},Window=win}
 	function page:Section(config)
 		config=config or {}
-		local section=setmetatable({Window=win,Page=self,Title=config.Title or "Controls",Rows={},Actions={},Expanded=false},Section)
+		local section=setmetatable({Window=win,Page=self,Title=config.Title or "Controls",Rows={},Actions={},Expanded=config.Expanded==true},Section)
 		section.Frame=frame(scroll,section.Title) list(section.Frame,8)
 		local header=frame(section.Frame,"Section heading") header.LayoutOrder=0 list(header,8)
 		label(header,section.Title,18,C.Text,true)
@@ -314,6 +343,7 @@ function Library:MakeTab(name)
 		return section
 	end
 	win._pages[name]=page
+	if win._nav and not win._navButtons[name] then win:_navigationButton(name) end
 	return page
 end
 function Section:_refreshConfig()
@@ -342,7 +372,7 @@ function Section:_action(config,kind)
 end
 function Section:Toggle(config)
 	config=config or {}
-	if self.Page.Name=="Actions" and not config.Setting then return self:_action(config,"Toggle") end
+	if (self.Page.Name=="Actions" or self.Page.Name=="Shops") and not config.Setting then return self:_action(config,"Toggle") end
 	local win=self.Window
 	local row=self:_setting(config)
 	local value=config.Default==true
@@ -370,7 +400,7 @@ function Section:Toggle(config)
 end
 function Section:Button(config)
 	config=config or {}
-	if self.Page.Name=="Actions" and not config.Setting then return self:_action(config,"Button") end
+	if (self.Page.Name=="Actions" or self.Page.Name=="Shops") and not config.Setting then return self:_action(config,"Button") end
 	local row=self:_setting(config)
 	local win=self.Window
 	local busy=false
@@ -503,7 +533,7 @@ function Section:Dropdown(config)
 	local button=win:_button(row,"")
 	local control={}
 	local function render()
-		button.Text=(multi and (#selected>0 and table.concat(selected,", ") or config.PlaceHolderText or "Select options")
+		button.Text=(multi and (#selected>1 and tostring(#selected).." selected" or #selected==1 and tostring(selected[1]) or config.PlaceHolderText or "Select options")
 			or selected or config.PlaceHolderText or "Select an option").."  ▾"
 	end
 	function control:Get() return multi and table.clone(selected) or selected end
@@ -576,9 +606,9 @@ end
 function Library:FocusSection(section)
 	self._search.Text="" self._enabledOnly=false self:_updateActions()
 	section.Expanded=true section:_refreshConfig()
-	self:ShowTab("Actions")
+	self:ShowTab(section.Page.Name)
 	self:_later(0,function()
-		local scroll=self._pages.Actions.Frame
+		local scroll=section.Page.Frame
 		local y=section.Frame.AbsolutePosition.Y-scroll.AbsolutePosition.Y+scroll.CanvasPosition.Y
 		scroll.CanvasPosition=Vector2.new(0,math.max(0,y-16))
 	end)
@@ -812,8 +842,9 @@ function Library:Finalize(shortcuts)
 	self._welcome.Visible=#self._shortcutRows==0 and not hasHomeReports
 	local hasActions=#self._actionOrder>0
 	self._enabledLabel.Visible=hasActions or not hasHomeReports
-	self._navButtons.Actions.Visible=hasActions or not hasHomeReports
-	if hasHomeReports and not hasActions and self._currentPage=="Actions" then self:ShowTab("Home") end
+	self._navButtons.Actions.Visible=#self._pages.Actions.Sections>0 or not hasHomeReports
+	if hasHomeReports and not self._navButtons.Actions.Visible and self._currentPage=="Actions" then self:ShowTab("Home") end
+	if not self._currentPage then self:ShowTab(self._pages[self._prefs.Page] and self._prefs.Page or "Home") end
 	self._welcomeTitle.Text=hasActions and "Everything in one place" or "Your workspace is ready"
 	self._welcomeText.Text=hasActions and "Browse your available controls in Actions. Every feature starts off until you enable it."
 		or "Game actions haven't been added for this experience yet. You can personalize your interface in Settings."
@@ -942,7 +973,7 @@ function Library:Start(config)
 		local ok,key=pcall(function() return Enum.KeyCode[saved.Hotkey] end)
 		if ok and key and key~=Enum.KeyCode.Unknown then win._prefs.Hotkey=key.Name end
 	end
-	if saved.Page=="Actions" or saved.Page=="Settings" then win._prefs.Page=saved.Page end
+	if saved.Page=="Actions" or saved.Page=="Shops" or saved.Page=="Settings" then win._prefs.Page=saved.Page end
 	local restorePage=win._prefs.Page
 	win._gui=create("ScreenGui",{Name="ReHubGui",ResetOnSpawn=false,DisplayOrder=999,
 		ZIndexBehavior=Enum.ZIndexBehavior.Sibling,IgnoreGuiInset=false},playerGui)
@@ -985,28 +1016,7 @@ function Library:Start(config)
 	win._nav=create("Frame",{Name="Navigation",BackgroundTransparency=1},win._mainFrame)
 	win._navLayout=list(win._nav,8)
 	win._content=create("Frame",{Name="Content",BackgroundColor3=C.Canvas,BackgroundTransparency=0.2,BorderSizePixel=0,ClipsDescendants=true},win._mainFrame) round(win._content,14)
-	for index,name in ipairs({"Home","Actions","Settings"}) do
-		win:MakeTab(name)
-		local button=win:_button(win._nav,name,function() win:ShowTab(name) end) button.LayoutOrder=index
-		win._navButtons[name]=button
-		-- UIPadding offsets children as well as text; place the icon in that left inset.
-		local icon=create("Frame",{Name="Icon",Size=UDim2.fromOffset(16,16),Position=UDim2.new(0,-24,0.5,-8),BackgroundTransparency=1},button)
-		win._navIcons[name]=icon
-		if name=="Home" then
-			for _,p in ipairs({{0,0},{9,0},{0,9},{9,9}}) do
-				local tile=create("Frame",{Size=UDim2.fromOffset(6,6),Position=UDim2.fromOffset(p[1],p[2]),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(tile,2)
-			end
-		elseif name=="Actions" then
-			for i=0,2 do
-				create("Frame",{Size=UDim2.fromOffset(16,1),Position=UDim2.fromOffset(0,i*6+1),BackgroundColor3=C.Secondary,BorderSizePixel=0},icon)
-				local knob=create("Frame",{Size=UDim2.fromOffset(4,4),Position=UDim2.fromOffset(i==1 and 9 or 3,i*6),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(knob,2)
-			end
-		else
-			local ring=create("Frame",{Size=UDim2.fromOffset(14,14),Position=UDim2.fromOffset(1,1),BackgroundTransparency=1},icon) round(ring,7)
-			create("UIStroke",{Color=C.Secondary,Thickness=1.5},ring)
-			local center=create("Frame",{Size=UDim2.fromOffset(4,4),Position=UDim2.fromOffset(6,6),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(center,2)
-		end
-	end
+	for _,name in ipairs({"Home","Actions","Settings"}) do win:MakeTab(name) end
 	win._stopBar=create("Frame",{Name="StopBar",BackgroundTransparency=1,Visible=false},win._mainFrame)
 	win:_button(win._stopBar,"Stop all enabled actions",function() win:StopAll() end)
 	win._launcher=win:_button(win._stage,"Re: Hub",function() if not win._launcherDragged then win:ToggleUI() end end,108)
