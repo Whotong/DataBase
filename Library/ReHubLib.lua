@@ -283,7 +283,7 @@ end
 -- expands inside it; dropdowns use a separate modal instead of nested scrolling.
 function Library:_navigationButton(name)
 	local win=self
-	local index=({Home=1,Actions=2,Shops=3,Settings=4})[name]
+	local index=({Home=1,Actions=2,Farm=3,Shops=4,Settings=5})[name]
 	local button=win:_button(win._nav,name,function() win:ShowTab(name) end) button.LayoutOrder=index
 	win._navButtons[name]=button
 	-- UIPadding offsets children as well as text; place the icon in that left inset.
@@ -297,6 +297,11 @@ function Library:_navigationButton(name)
 		for i=0,2 do
 			create("Frame",{Size=UDim2.fromOffset(16,1),Position=UDim2.fromOffset(0,i*6+1),BackgroundColor3=C.Secondary,BorderSizePixel=0},icon)
 			local knob=create("Frame",{Size=UDim2.fromOffset(4,4),Position=UDim2.fromOffset(i==1 and 9 or 3,i*6),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(knob,2)
+		end
+	elseif name=="Farm" then
+		create("Frame",{Size=UDim2.fromOffset(2,13),Position=UDim2.fromOffset(7,3),BackgroundColor3=C.Secondary,BorderSizePixel=0},icon)
+		for _,leaf in ipairs({{0,1,-25},{8,5,25}}) do
+			local shape=create("Frame",{Size=UDim2.fromOffset(8,5),Position=UDim2.fromOffset(leaf[1],leaf[2]),Rotation=leaf[3],BackgroundColor3=C.Accent,BorderSizePixel=0},icon) round(shape,4)
 		end
 	elseif name=="Shops" then
 		local bag=create("Frame",{Size=UDim2.fromOffset(14,12),Position=UDim2.fromOffset(1,4),BackgroundTransparency=1},icon) round(bag,3)
@@ -316,7 +321,7 @@ function Library:MakeTab(name)
 		return {Section=function(_,config) return win._pages.Actions:Section(config) end}
 	end
 	if win._pages[name] then return win._pages[name] end
-	assert(name=="Home" or name=="Actions" or name=="Shops" or name=="Settings","Use a supported hub page")
+	assert(name=="Home" or name=="Actions" or name=="Farm" or name=="Shops" or name=="Settings","Use a supported hub page")
 	local scroll=create("ScrollingFrame",{Name=name,BackgroundTransparency=1,BorderSizePixel=0,
 		Size=UDim2.fromScale(1,1),CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,
 		ScrollBarThickness=3,ScrollBarImageColor3=C.Divider,ScrollingDirection=Enum.ScrollingDirection.Y,
@@ -372,7 +377,7 @@ function Section:_action(config,kind)
 end
 function Section:Toggle(config)
 	config=config or {}
-	if (self.Page.Name=="Actions" or self.Page.Name=="Shops") and not config.Setting then return self:_action(config,"Toggle") end
+	if (self.Page.Name=="Actions" or self.Page.Name=="Shops" or self.Page.Name=="Farm") and not config.Setting then return self:_action(config,"Toggle") end
 	local win=self.Window
 	local row=self:_setting(config)
 	local value=config.Default==true
@@ -400,7 +405,7 @@ function Section:Toggle(config)
 end
 function Section:Button(config)
 	config=config or {}
-	if (self.Page.Name=="Actions" or self.Page.Name=="Shops") and not config.Setting then return self:_action(config,"Button") end
+	if (self.Page.Name=="Actions" or self.Page.Name=="Shops" or self.Page.Name=="Farm") and not config.Setting then return self:_action(config,"Button") end
 	local row=self:_setting(config)
 	local win=self.Window
 	local busy=false
@@ -973,7 +978,7 @@ function Library:Start(config)
 		local ok,key=pcall(function() return Enum.KeyCode[saved.Hotkey] end)
 		if ok and key and key~=Enum.KeyCode.Unknown then win._prefs.Hotkey=key.Name end
 	end
-	if saved.Page=="Actions" or saved.Page=="Shops" or saved.Page=="Settings" then win._prefs.Page=saved.Page end
+	if saved.Page=="Actions" or saved.Page=="Farm" or saved.Page=="Shops" or saved.Page=="Settings" then win._prefs.Page=saved.Page end
 	local restorePage=win._prefs.Page
 	win._gui=create("ScreenGui",{Name="ReHubGui",ResetOnSpawn=false,DisplayOrder=999,
 		ZIndexBehavior=Enum.ZIndexBehavior.Sibling,IgnoreGuiInset=false},playerGui)
