@@ -283,7 +283,7 @@ end
 -- expands inside it; dropdowns use a separate modal instead of nested scrolling.
 function Library:_navigationButton(name)
 	local win=self
-	local index=({Home=1,Actions=2,Farm=3,Shops=4,Settings=5})[name]
+	local index=({Home=1,Actions=2,Farm=3,Shops=4,Events=5,Settings=6})[name]
 	local button=win:_button(win._nav,name,function() win:ShowTab(name) end) button.LayoutOrder=index
 	win._navButtons[name]=button
 	-- UIPadding offsets children as well as text; place the icon in that left inset.
@@ -308,6 +308,11 @@ function Library:_navigationButton(name)
 		create("UIStroke",{Color=C.Secondary,Thickness=1.3},bag)
 		local handle=create("Frame",{Size=UDim2.fromOffset(6,7),Position=UDim2.fromOffset(5,0),BackgroundTransparency=1},icon) round(handle,3)
 		create("UIStroke",{Color=C.Accent,Thickness=1.3},handle)
+	elseif name=="Events" then
+		local calendar=create("Frame",{Size=UDim2.fromOffset(14,13),Position=UDim2.fromOffset(1,2),BackgroundTransparency=1},icon) round(calendar,3)
+		create("UIStroke",{Color=C.Secondary,Thickness=1.3},calendar)
+		for _,x in ipairs({4,11}) do create("Frame",{Size=UDim2.fromOffset(1,4),Position=UDim2.fromOffset(x,0),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) end
+		for _,x in ipairs({4,9}) do create("Frame",{Size=UDim2.fromOffset(3,3),Position=UDim2.fromOffset(x,8),BackgroundColor3=C.Accent,BorderSizePixel=0},icon) end
 	else
 		local ring=create("Frame",{Size=UDim2.fromOffset(14,14),Position=UDim2.fromOffset(1,1),BackgroundTransparency=1},icon) round(ring,7)
 		create("UIStroke",{Color=C.Secondary,Thickness=1.5},ring)
@@ -321,7 +326,7 @@ function Library:MakeTab(name)
 		return {Section=function(_,config) return win._pages.Actions:Section(config) end}
 	end
 	if win._pages[name] then return win._pages[name] end
-	assert(name=="Home" or name=="Actions" or name=="Farm" or name=="Shops" or name=="Settings","Use a supported hub page")
+	assert(name=="Home" or name=="Actions" or name=="Farm" or name=="Shops" or name=="Events" or name=="Settings","Use a supported hub page")
 	local scroll=create("ScrollingFrame",{Name=name,BackgroundTransparency=1,BorderSizePixel=0,
 		Size=UDim2.fromScale(1,1),CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,
 		ScrollBarThickness=3,ScrollBarImageColor3=C.Divider,ScrollingDirection=Enum.ScrollingDirection.Y,
@@ -377,7 +382,7 @@ function Section:_action(config,kind)
 end
 function Section:Toggle(config)
 	config=config or {}
-	if (self.Page.Name=="Actions" or self.Page.Name=="Shops" or self.Page.Name=="Farm") and not config.Setting then return self:_action(config,"Toggle") end
+	if (self.Page.Name=="Actions" or self.Page.Name=="Shops" or self.Page.Name=="Farm" or self.Page.Name=="Events") and not config.Setting then return self:_action(config,"Toggle") end
 	local win=self.Window
 	local row=self:_setting(config)
 	local value=config.Default==true
@@ -405,7 +410,7 @@ function Section:Toggle(config)
 end
 function Section:Button(config)
 	config=config or {}
-	if (self.Page.Name=="Actions" or self.Page.Name=="Shops" or self.Page.Name=="Farm") and not config.Setting then return self:_action(config,"Button") end
+	if (self.Page.Name=="Actions" or self.Page.Name=="Shops" or self.Page.Name=="Farm" or self.Page.Name=="Events") and not config.Setting then return self:_action(config,"Button") end
 	local row=self:_setting(config)
 	local win=self.Window
 	local busy=false
@@ -691,8 +696,10 @@ function Library:_layout()
 		icon.Visible=not bottom
 		local button=self._navButtons[name]
 		button.TextXAlignment=bottom and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
+		button.TextSize=bottom and navCount>=5 and 12 or 14
 		local padding=button:FindFirstChildOfClass("UIPadding")
-		padding.PaddingLeft=UDim.new(0,bottom and 8 or 36)
+		padding.PaddingLeft=UDim.new(0,bottom and (navCount>=5 and 4 or 8) or 36)
+		padding.PaddingRight=UDim.new(0,bottom and navCount>=5 and 4 or 12)
 	end
 	local stopHeight=self._stopBar.Visible and 52 or 0
 	self._stopBar.Position=UDim2.new(0,rail+12,1,-navHeight-stopHeight)
@@ -978,7 +985,7 @@ function Library:Start(config)
 		local ok,key=pcall(function() return Enum.KeyCode[saved.Hotkey] end)
 		if ok and key and key~=Enum.KeyCode.Unknown then win._prefs.Hotkey=key.Name end
 	end
-	if saved.Page=="Actions" or saved.Page=="Farm" or saved.Page=="Shops" or saved.Page=="Settings" then win._prefs.Page=saved.Page end
+	if saved.Page=="Actions" or saved.Page=="Farm" or saved.Page=="Shops" or saved.Page=="Events" or saved.Page=="Settings" then win._prefs.Page=saved.Page end
 	local restorePage=win._prefs.Page
 	win._gui=create("ScreenGui",{Name="ReHubGui",ResetOnSpawn=false,DisplayOrder=999,
 		ZIndexBehavior=Enum.ZIndexBehavior.Sibling,IgnoreGuiInset=false},playerGui)
